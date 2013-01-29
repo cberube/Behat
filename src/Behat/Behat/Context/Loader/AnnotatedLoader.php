@@ -112,15 +112,44 @@ class AnnotatedLoader implements LoaderInterface
         if ($docBlock = $method->getDocComment()) {
             $description = null;
 
-            foreach (explode("\n", $docBlock) as $docLine) {
+            $docLines = explode("\n", $docBlock);
+            $docLineCount = count($docLines);
+
+            for ($i = 0; $i < $docLineCount; $i++) {
+                $docLine = $docLines[$i];
                 $docLine = preg_replace('/^\/\*\*\s*|^\s*\*\s*|\s*\*\/$|\s*$/', '', $docLine);
 
-                if (preg_match('/^\@('.$this->availableAnnotations.')\s*(.*)?$/i', $docLine, $matches)) {
-                    $class    = $this->annotationClasses[strtolower($matches[1])];
+                $annotationStartPattern = '/^\@('.$this->availableAnnotations.')\s*(.*)$/i';
+                $isAnnotationLine = preg_match($annotationStartPattern, $docLine, $matches);
+
+                if ($isAnnotationLine) {
+                    $annotationLineList = array();
+                    $annotationLineList[] = $matches[2];
+
+                    $annotationName = strtolower($matches[1]);
+
+                    //  Find any additional lines that might contribute to this annotation
+                    while ($i < $docLineCount - 1) {
+                        $nextDocLine = $docLines[$i + 1];
+                        $nextDocLine = preg_replace('/^\/\*\*|^\s*\*|\s*\*\/$|\s*$/', '', $nextDocLine);
+
+                        $annotationContinuationPattern = "/^\\s{4,}/";
+
+                        if (!preg_match($annotationContinuationPattern, $nextDocLine)) {
+                            break;
+                        }
+
+                        $annotationLineList[] = trim($nextDocLine);
+                        $i++;
+                    }
+
+                    $annotationContent = trim(implode(' ', $annotationLineList));
+
+                    $class = $this->annotationClasses[$annotationName];
                     $callback = array($className, $method->getName());
 
-                    if (isset($matches[2]) && !empty($matches[2])) {
-                        $annotation = new $class($callback, $matches[2]);
+                    if (!empty($annotationContent)) {
+                        $annotation = new $class($callback, $annotationContent);
                     } else {
                         $annotation = new $class($callback);
                     }
